@@ -1,5 +1,7 @@
 # gox_biosensor_app.py
 # Streamlit UI for the GOx biosensor physics engine
+# gox_biosensor_app.py
+# Streamlit UI for the immobilized GOx biosensor physics engine (Level A, bulk + film)
 
 import numpy as np
 import pandas as pd
@@ -14,10 +16,10 @@ from gox_biosensor_engine import (
 # ---------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------
-st.title("Glucose Oxidase Biosensor Simulator")
+st.title("Immobilized Glucose Oxidase Biosensor Simulator")
 st.write(
-    "Mechanistic GOx model with stepwise glucose input, oxygen in ppm, "
-    "amperometric current, CSV export, and parameter sweeps."
+    "Bulk + film model with immobilized GOx on a 0.1 mm × 2 mm cylindrical electrode, "
+    "stepwise bulk glucose, oxygen in ppm, and amperometric current from the film."
 )
 
 tabs = st.tabs(["Simulation", "Parameter sweep"])
@@ -29,7 +31,7 @@ with tabs[0]:
     st.header("Single-run simulation")
 
     # --- Glucose step settings ---
-    st.subheader("Glucose step protocol")
+    st.subheader("Bulk glucose step protocol")
 
     n_steps = st.slider("Number of glucose steps", 1, 10, 6, key="sim_n_steps")
     step_duration = st.slider("Step duration (s)", 50, 1000, 150, 10, key="sim_step_duration")
@@ -39,7 +41,7 @@ with tabs[0]:
 
     for i in range(n_steps):
         conc = st.number_input(
-            f"Step {i+1} glucose (mM)",
+            f"Step {i+1} bulk glucose (mM)",
             min_value=0.0, max_value=100.0,
             value=float(default_concs[i]),
             step=0.5,
@@ -48,22 +50,42 @@ with tabs[0]:
         glucose_steps_mM.append(conc)
 
     # --- Kinetic parameters ---
-    st.subheader("Kinetic parameters")
+    st.subheader("Kinetic parameters (film GOx)")
 
     k1   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k1")
     km1  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sim_km1")
     k2   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k2")
     k3   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k3")
 
-    E_tot_mM = st.slider("Total enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
+    E_tot_mM = st.slider("Film enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
 
     # --- Oxygen in ppm ---
-    st.subheader("Dissolved oxygen (ppm)")
+    st.subheader("Dissolved oxygen (bulk / film)")
 
-    O2_ppm = st.selectbox("Initial O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_ppm")
-    O2_bath_ppm = st.selectbox("Bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_bath_ppm")
+    O2_ppm = st.selectbox("Initial bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_ppm")
+    O2_bath_ppm = st.selectbox("Film bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_bath_ppm")
 
-    O2_mode = st.selectbox("Oxygen mode", ["closed", "well-aerated"], key="sim_O2_mode")
+    O2_mode = st.selectbox("Film oxygen mode", ["closed", "well-aerated"], key="sim_O2_mode")
+
+    # --- Geometry & mass transfer ---
+    st.subheader("Geometry and mass transfer")
+
+    film_thickness_um = st.slider("Film thickness (µm)", 1.0, 200.0, 20.0, 1.0, key="sim_film_thickness")
+    k_mt_glucose = st.number_input(
+        "Mass transfer coeff. for glucose k_mt_glucose (m/s)",
+        min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
+        key="sim_k_mt_glucose"
+    )
+    k_mt_O2 = st.number_input(
+        "Mass transfer coeff. for O₂ k_mt_O2 (m/s)",
+        min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
+        key="sim_k_mt_O2"
+    )
+    V_bulk_mL = st.number_input(
+        "Effective bulk volume (mL)",
+        min_value=0.1, max_value=100.0, value=1.0, step=0.1,
+        key="sim_V_bulk_mL"
+    )
 
     # --- Run simulation ---
     if st.button("Run simulation", key="sim_run_button"):
@@ -78,34 +100,50 @@ with tabs[0]:
             O2_bath_ppm=O2_bath_ppm,
             glucose_steps_mM=glucose_steps_mM,
             step_duration_s=step_duration,
+            film_thickness_um=film_thickness_um,
+            k_mt_glucose=k_mt_glucose,
+            k_mt_O2=k_mt_O2,
+            V_bulk_mL=V_bulk_mL,
         )
 
         t = result["t"]
+
+        # Film species
         P_mM = result["P_M"] * 1e3
         H2O2_mM = result["H2O2_M"] * 1e3
-        O2_mM = result["O2_M"] * 1e3
-        glucose_mM = result["glucose_mM"]
+        O2_film_mM = result["O2_film_M"] * 1e3
+
+        # Glucose profiles
+        glucose_bulk_mM = result["glucose_bulk_mM"]
+        glucose_film_mM = result["glucose_film_mM"]
+
         current = result["current_AU"]
 
         # --- Plots ---
-        st.subheader("Time courses")
+        st.subheader("Film species (immobilized region)")
 
         fig1, ax1 = plt.subplots(figsize=(8, 5))
-        ax1.plot(t, P_mM, label="Product (mM)")
-        ax1.plot(t, H2O2_mM, label="H2O2 (mM)")
-        ax1.plot(t, O2_mM, label="O2 (mM)")
+        ax1.plot(t, P_mM, label="P_film (mM)")
+        ax1.plot(t, H2O2_mM, label="H2O2_film (mM)")
+        ax1.plot(t, O2_film_mM, label="O2_film (mM)")
         ax1.set_xlabel("Time (s)")
         ax1.set_ylabel("Concentration (mM)")
         ax1.grid(True)
         ax1.legend()
         st.pyplot(fig1)
 
+        st.subheader("Bulk vs film glucose")
+
         fig2, ax2 = plt.subplots(figsize=(8, 3))
-        ax2.plot(t, glucose_mM, color="purple")
+        ax2.plot(t, glucose_bulk_mM, label="Bulk glucose (mM)", color="purple")
+        ax2.plot(t, glucose_film_mM, label="Film glucose (mM)", color="orange", linestyle="--")
         ax2.set_xlabel("Time (s)")
         ax2.set_ylabel("Glucose (mM)")
         ax2.grid(True)
+        ax2.legend()
         st.pyplot(fig2)
+
+        st.subheader("Amperometric current (from film H₂O₂)")
 
         fig3, ax3 = plt.subplots(figsize=(8, 3))
         ax3.plot(t, current)
@@ -115,14 +153,15 @@ with tabs[0]:
         st.pyplot(fig3)
 
         # --- CSV export ---
-        st.subheader("Export time series")
+        st.subheader("Export time series (film + bulk)")
 
         df = pd.DataFrame({
             "time_s": t,
-            "P_mM": P_mM,
-            "H2O2_mM": H2O2_mM,
-            "O2_mM": O2_mM,
-            "glucose_mM": glucose_mM,
+            "P_film_mM": P_mM,
+            "H2O2_film_mM": H2O2_mM,
+            "O2_film_mM": O2_film_mM,
+            "glucose_bulk_mM": glucose_bulk_mM,
+            "glucose_film_mM": glucose_film_mM,
             "current_AU": current,
         })
 
@@ -130,7 +169,7 @@ with tabs[0]:
         st.download_button(
             label="Download CSV",
             data=csv,
-            file_name="gox_biosensor_timeseries.csv",
+            file_name="immobilized_gox_biosensor_timeseries.csv",
             mime="text/csv",
             key="sim_download_csv"
         )
@@ -140,12 +179,12 @@ with tabs[0]:
 # PARAMETER SWEEP TAB
 # ---------------------------------------------------------
 with tabs[1]:
-    st.header("Parameter sweep: enzyme vs oxygen")
+    st.header("Parameter sweep: enzyme vs oxygen (immobilized film)")
 
-    st.write("Sweeps enzyme loading and oxygen (ppm) and reports peak current.")
+    st.write("Sweeps film enzyme loading and bulk oxygen (ppm), reporting peak film current.")
 
     # Sweep settings
-    n_steps_sw = st.slider("Number of glucose steps", 1, 6, 4, key="sw_n_steps")
+    n_steps_sw = st.slider("Number of bulk glucose steps", 1, 6, 4, key="sw_n_steps")
     step_duration_sw = st.slider("Step duration (s)", 50, 1000, 150, 50, key="sw_step_duration")
 
     default_concs_sw = [0, 4, 6, 8, 10, 12]
@@ -153,7 +192,7 @@ with tabs[1]:
 
     for i in range(n_steps_sw):
         conc = st.number_input(
-            f"Sweep step {i+1} glucose (mM)",
+            f"Sweep step {i+1} bulk glucose (mM)",
             min_value=0.0, max_value=100.0,
             value=float(default_concs_sw[i]),
             step=0.5,
@@ -162,22 +201,40 @@ with tabs[1]:
         glucose_steps_mM_sw.append(conc)
 
     # Sweep ranges
-    E_min = st.number_input("Min enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
-    E_max = st.number_input("Max enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
+    E_min = st.number_input("Min film enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
+    E_max = st.number_input("Max film enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
     n_E   = st.slider("Number of enzyme points", 3, 20, 8, key="sw_n_E")
 
-    O2_ppm_min = st.selectbox("Min O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
-    O2_ppm_max = st.selectbox("Max O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_max")
+    O2_ppm_min = st.selectbox("Min bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
+    O2_ppm_max = st.selectbox("Max bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_max")
     n_O2       = st.slider("Number of O₂ points", 3, 20, 8, key="sw_n_O2")
 
-    O2_mode_sw = st.selectbox("Oxygen mode (sweep)", ["closed", "well-aerated"], key="sw_O2_mode")
-    O2_bath_ppm_sw = st.selectbox("Bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_bath_ppm")
+    O2_mode_sw = st.selectbox("Film oxygen mode (sweep)", ["closed", "well-aerated"], key="sw_O2_mode")
+    O2_bath_ppm_sw = st.selectbox("Film bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_bath_ppm")
+
+    # Geometry & mass transfer (sweep uses same values)
+    film_thickness_um_sw = st.slider("Film thickness (µm, sweep)", 1.0, 200.0, 20.0, 1.0, key="sw_film_thickness")
+    k_mt_glucose_sw = st.number_input(
+        "k_mt_glucose (m/s, sweep)",
+        min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
+        key="sw_k_mt_glucose"
+    )
+    k_mt_O2_sw = st.number_input(
+        "k_mt_O2 (m/s, sweep)",
+        min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
+        key="sw_k_mt_O2"
+    )
+    V_bulk_mL_sw = st.number_input(
+        "Bulk volume (mL, sweep)",
+        min_value=0.1, max_value=100.0, value=1.0, step=0.1,
+        key="sw_V_bulk_mL"
+    )
 
     # Kinetics
-    k1_sw   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k1")
-    km1_sw  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sw_km1")
-    k2_sw   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k2")
-    k3_sw   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k3")
+    k1_sw   = st.slider("k1 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k1")
+    km1_sw  = st.slider("k-1 (s⁻¹, sweep)", 0.01, 10.0, 0.5, 0.01, key="sw_km1")
+    k2_sw   = st.slider("k2 (s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k2")
+    k3_sw   = st.slider("k3 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k3")
 
     if st.button("Run parameter sweep", key="sw_run_button"):
         E_vals = np.linspace(E_min, E_max, n_E)
@@ -198,6 +255,10 @@ with tabs[1]:
                     O2_bath_ppm=O2_bath_ppm_sw,
                     glucose_steps_mM=glucose_steps_mM_sw,
                     step_duration_s=step_duration_sw,
+                    film_thickness_um=film_thickness_um_sw,
+                    k_mt_glucose=k_mt_glucose_sw,
+                    k_mt_O2=k_mt_O2_sw,
+                    V_bulk_mL=V_bulk_mL_sw,
                     n_points=800,
                 )
                 peak_signal[i, j] = np.max(result["current_AU"])
@@ -209,15 +270,15 @@ with tabs[1]:
             origin="lower",
             extent=[E_min, E_max, O2_ppm_min, O2_ppm_max]
         )
-        ax.set_xlabel("Enzyme (mM)")
-        ax.set_ylabel("O₂ (ppm)")
-        ax.set_title("Peak amperometric signal (A.U.)")
+        ax.set_xlabel("Film enzyme (mM)")
+        ax.set_ylabel("Bulk O₂ (ppm)")
+        ax.set_title("Peak film amperometric signal (A.U.)")
         fig.colorbar(im, ax=ax, label="Peak current (A.U.)")
         st.pyplot(fig)
 
         df_sweep = pd.DataFrame({
-            "E_mM": np.repeat(E_vals, n_O2),
-            "O2_ppm": np.tile(O2_vals_ppm, n_E),
+            "E_film_mM": np.repeat(E_vals, n_O2),
+            "O2_bulk_ppm": np.tile(O2_vals_ppm, n_E),
             "peak_current_AU": peak_signal.flatten()
         })
 
@@ -225,7 +286,7 @@ with tabs[1]:
         st.download_button(
             label="Download sweep results CSV",
             data=csv_sw,
-            file_name="gox_biosensor_sweep.csv",
+            file_name="immobilized_gox_biosensor_sweep.csv",
             mime="text/csv",
             key="sw_download_csv"
         )
