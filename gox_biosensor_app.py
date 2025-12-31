@@ -1,6 +1,6 @@
 # gox_biosensor_app.py
 # Streamlit UI for the GOx biosensor physics engine
-# gox_biosensor_app.py
+# # gox_biosensor_app.py
 # Streamlit UI for the immobilized GOx biosensor physics engine (Level A, bulk + film)
 
 import numpy as np
@@ -14,13 +14,14 @@ from gox_biosensor_engine import (
 )
 
 # ---------------------------------------------------------
-# Streamlit UI
+# PAGE LAYOUT
 # ---------------------------------------------------------
+st.set_page_config(layout="wide")
 st.title("Immobilized Glucose Oxidase Biosensor Simulator")
-st.write(
-    "Bulk + film model with immobilized GOx on a 0.1 mm × 2 mm cylindrical electrode, "
-    "stepwise bulk glucose, oxygen in ppm, and amperometric current from the film."
-)
+
+# Sidebar for all controls
+sidebar = st.sidebar
+sidebar.header("Simulation Controls")
 
 tabs = st.tabs(["Simulation", "Parameter sweep"])
 
@@ -28,19 +29,18 @@ tabs = st.tabs(["Simulation", "Parameter sweep"])
 # SIMULATION TAB
 # ---------------------------------------------------------
 with tabs[0]:
-    st.header("Single-run simulation")
 
     # --- Glucose step settings ---
-    st.subheader("Bulk glucose step protocol")
+    sidebar.subheader("Bulk glucose steps")
 
-    n_steps = st.slider("Number of glucose steps", 1, 10, 6, key="sim_n_steps")
-    step_duration = st.slider("Step duration (s)", 50, 1000, 150, 10, key="sim_step_duration")
+    n_steps = sidebar.slider("Number of glucose steps", 1, 10, 6, key="sim_n_steps")
+    step_duration = sidebar.slider("Step duration (s)", 50, 1000, 150, 10, key="sim_step_duration")
 
     default_concs = [0, 4, 6, 8, 10, 12, 14, 16, 18, 20]
     glucose_steps_mM = []
 
     for i in range(n_steps):
-        conc = st.number_input(
+        conc = sidebar.number_input(
             f"Step {i+1} bulk glucose (mM)",
             min_value=0.0, max_value=100.0,
             value=float(default_concs[i]),
@@ -50,45 +50,47 @@ with tabs[0]:
         glucose_steps_mM.append(conc)
 
     # --- Kinetic parameters ---
-    st.subheader("Kinetic parameters (film GOx)")
+    sidebar.subheader("Kinetic parameters (film GOx)")
 
-    k1   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k1")
-    km1  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sim_km1")
-    k2   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k2")
-    k3   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k3")
+    k1   = sidebar.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k1")
+    km1  = sidebar.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sim_km1")
+    k2   = sidebar.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k2")
+    k3   = sidebar.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k3")
 
-    E_tot_mM = st.slider("Film enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
+    E_tot_mM = sidebar.slider("Film enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
 
     # --- Oxygen in ppm ---
-    st.subheader("Dissolved oxygen (bulk / film)")
+    sidebar.subheader("Dissolved oxygen (bulk / film)")
 
-    O2_ppm = st.selectbox("Initial bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_ppm")
-    O2_bath_ppm = st.selectbox("Film bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_bath_ppm")
+    O2_ppm = sidebar.selectbox("Initial bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_ppm")
+    O2_bath_ppm = sidebar.selectbox("Film bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_bath_ppm")
 
-    O2_mode = st.selectbox("Film oxygen mode", ["closed", "well-aerated"], key="sim_O2_mode")
+    O2_mode = sidebar.selectbox("Film oxygen mode", ["closed", "well-aerated"], key="sim_O2_mode")
 
     # --- Geometry & mass transfer ---
-    st.subheader("Geometry and mass transfer")
+    sidebar.subheader("Geometry and mass transfer")
 
-    film_thickness_um = st.slider("Film thickness (µm)", 1.0, 200.0, 20.0, 1.0, key="sim_film_thickness")
-    k_mt_glucose = st.number_input(
-        "Mass transfer coeff. for glucose k_mt_glucose (m/s)",
+    film_thickness_um = sidebar.slider("Film thickness (µm)", 1.0, 200.0, 20.0, 1.0, key="sim_film_thickness")
+    k_mt_glucose = sidebar.number_input(
+        "k_mt_glucose (m/s)",
         min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
         key="sim_k_mt_glucose"
     )
-    k_mt_O2 = st.number_input(
-        "Mass transfer coeff. for O₂ k_mt_O2 (m/s)",
+    k_mt_O2 = sidebar.number_input(
+        "k_mt_O2 (m/s)",
         min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
         key="sim_k_mt_O2"
     )
-    V_bulk_mL = st.number_input(
-        "Effective bulk volume (mL)",
+    V_bulk_mL = sidebar.number_input(
+        "Bulk volume (mL)",
         min_value=0.1, max_value=100.0, value=1.0, step=0.1,
         key="sim_V_bulk_mL"
     )
 
-    # --- Run simulation ---
-    if st.button("Run simulation", key="sim_run_button"):
+    run_button = sidebar.button("Run simulation", key="sim_run_button")
+
+    # --- MAIN OUTPUT AREA ---
+    if run_button:
         result = run_gox_simulation(
             k1=k1,
             km1=km1,
@@ -153,7 +155,7 @@ with tabs[0]:
         st.pyplot(fig3)
 
         # --- CSV export ---
-        st.subheader("Export time series (film + bulk)")
+        st.subheader("Export time series")
 
         df = pd.DataFrame({
             "time_s": t,
@@ -179,19 +181,17 @@ with tabs[0]:
 # PARAMETER SWEEP TAB
 # ---------------------------------------------------------
 with tabs[1]:
-    st.header("Parameter sweep: enzyme vs oxygen (immobilized film)")
 
-    st.write("Sweeps film enzyme loading and bulk oxygen (ppm), reporting peak film current.")
+    sidebar.subheader("Sweep settings")
 
-    # Sweep settings
-    n_steps_sw = st.slider("Number of bulk glucose steps", 1, 6, 4, key="sw_n_steps")
-    step_duration_sw = st.slider("Step duration (s)", 50, 1000, 150, 50, key="sw_step_duration")
+    n_steps_sw = sidebar.slider("Number of bulk glucose steps", 1, 6, 4, key="sw_n_steps")
+    step_duration_sw = sidebar.slider("Step duration (s)", 50, 1000, 150, 50, key="sw_step_duration")
 
     default_concs_sw = [0, 4, 6, 8, 10, 12]
     glucose_steps_mM_sw = []
 
     for i in range(n_steps_sw):
-        conc = st.number_input(
+        conc = sidebar.number_input(
             f"Sweep step {i+1} bulk glucose (mM)",
             min_value=0.0, max_value=100.0,
             value=float(default_concs_sw[i]),
@@ -201,42 +201,44 @@ with tabs[1]:
         glucose_steps_mM_sw.append(conc)
 
     # Sweep ranges
-    E_min = st.number_input("Min film enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
-    E_max = st.number_input("Max film enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
-    n_E   = st.slider("Number of enzyme points", 3, 20, 8, key="sw_n_E")
+    E_min = sidebar.number_input("Min film enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
+    E_max = sidebar.number_input("Max film enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
+    n_E   = sidebar.slider("Number of enzyme points", 3, 20, 8, key="sw_n_E")
 
-    O2_ppm_min = st.selectbox("Min bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
-    O2_ppm_max = st.selectbox("Max bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_max")
-    n_O2       = st.slider("Number of O₂ points", 3, 20, 8, key="sw_n_O2")
+    O2_ppm_min = sidebar.selectbox("Min bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
+    O2_ppm_max = sidebar.selectbox("Max bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_max")
+    n_O2       = sidebar.slider("Number of O₂ points", 3, 20, 8, key="sw_n_O2")
 
-    O2_mode_sw = st.selectbox("Film oxygen mode (sweep)", ["closed", "well-aerated"], key="sw_O2_mode")
-    O2_bath_ppm_sw = st.selectbox("Film bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_bath_ppm")
+    O2_mode_sw = sidebar.selectbox("Film oxygen mode (sweep)", ["closed", "well-aerated"], key="sw_O2_mode")
+    O2_bath_ppm_sw = sidebar.selectbox("Film bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_bath_ppm")
 
-    # Geometry & mass transfer (sweep uses same values)
-    film_thickness_um_sw = st.slider("Film thickness (µm, sweep)", 1.0, 200.0, 20.0, 1.0, key="sw_film_thickness")
-    k_mt_glucose_sw = st.number_input(
+    # Geometry & mass transfer
+    film_thickness_um_sw = sidebar.slider("Film thickness (µm, sweep)", 1.0, 200.0, 20.0, 1.0, key="sw_film_thickness")
+    k_mt_glucose_sw = sidebar.number_input(
         "k_mt_glucose (m/s, sweep)",
         min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
         key="sw_k_mt_glucose"
     )
-    k_mt_O2_sw = st.number_input(
+    k_mt_O2_sw = sidebar.number_input(
         "k_mt_O2 (m/s, sweep)",
         min_value=1e-7, max_value=1e-3, value=1e-5, step=1e-6, format="%.1e",
         key="sw_k_mt_O2"
     )
-    V_bulk_mL_sw = st.number_input(
+    V_bulk_mL_sw = sidebar.number_input(
         "Bulk volume (mL, sweep)",
         min_value=0.1, max_value=100.0, value=1.0, step=0.1,
         key="sw_V_bulk_mL"
     )
 
     # Kinetics
-    k1_sw   = st.slider("k1 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k1")
-    km1_sw  = st.slider("k-1 (s⁻¹, sweep)", 0.01, 10.0, 0.5, 0.01, key="sw_km1")
-    k2_sw   = st.slider("k2 (s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k2")
-    k3_sw   = st.slider("k3 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k3")
+    k1_sw   = sidebar.slider("k1 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k1")
+    km1_sw  = sidebar.slider("k-1 (s⁻¹, sweep)", 0.01, 10.0, 0.5, 0.01, key="sw_km1")
+    k2_sw   = sidebar.slider("k2 (s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k2")
+    k3_sw   = sidebar.slider("k3 (M⁻¹ s⁻¹, sweep)", 0.01, 10.0, 1.0, 0.01, key="sw_k3")
 
-    if st.button("Run parameter sweep", key="sw_run_button"):
+    run_sweep = sidebar.button("Run parameter sweep", key="sw_run_button")
+
+    if run_sweep:
         E_vals = np.linspace(E_min, E_max, n_E)
         O2_vals_ppm = np.linspace(O2_ppm_min, O2_ppm_max, n_O2)
 
