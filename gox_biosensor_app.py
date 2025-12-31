@@ -1,5 +1,7 @@
 # gox_biosensor_app.py
 # Streamlit UI for the immobilized GOx biosensor physics engine (Level A, bulk + film)
+# Now using enzyme loading in Units per electrode in the UI,
+# internally converted to mM for the mechanistic engine.
 
 import numpy as np
 import pandas as pd
@@ -10,6 +12,51 @@ from gox_biosensor_engine import (
     run_gox_simulation,
     ppm_to_mM,
 )
+
+# ---------------------------------------------------------
+# CONSTANTS FOR ENZYME UNIT → mM CONVERSION
+# ---------------------------------------------------------
+# Assumed geometric electrode area (adjust to match your design)
+ELECTRODE_AREA_MM2 = 0.2  # e.g. 0.1 mm × 2 mm ~ 0.2 mm²
+
+# Assumed catalytic turnover for GOx (order of magnitude)
+KCAT_S_INV = 1000.0       # 1000 s⁻¹ ~ 60000 min⁻¹
+
+
+def units_per_electrode_to_mM(E_units, film_thickness_um, electrode_area_mm2=ELECTRODE_AREA_MM2, kcat_s_inv=KCAT_S_INV):
+    """
+    Convert enzyme loading in Units per electrode to an effective concentration in mM
+    inside the film, based on film volume and an assumed kcat.
+
+    1 U/electrode = 1 µmol glucose converted per electrode per minute at saturating substrate.
+
+    Steps:
+    - n_E (mol enzyme) = (E_units * 1e-6 mol/min) / (kcat_min⁻¹)
+    - kcat_min⁻¹ = kcat_s_inv * 60
+    - V_film (L) = area(mm²) * thickness(µm) * 1e-9
+    - [E] (M) = n_E / V_film
+    - [E] (mM) = [E] (M) * 1e3
+    """
+
+    if E_units <= 0:
+        return 0.0
+
+    # kcat in min⁻¹
+    kcat_min_inv = kcat_s_inv * 60.0
+
+    # moles of enzyme per electrode
+    n_E_mol = (E_units * 1e-6) / kcat_min_inv  # 1 U = 1 µmol/min
+
+    # film volume in liters
+    V_film_L = electrode_area_mm2 * film_thickness_um * 1e-9  # L
+
+    if V_film_L <= 0:
+        return 0.0
+
+    E_tot_M = n_E_mol / V_film_L
+    E_tot_mM = E_tot_M * 1e3
+    return E_tot_mM
+
 
 # ---------------------------------------------------------
 # PAGE LAYOUT
@@ -55,7 +102,18 @@ with tabs[0]:
     k2   = sidebar.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k2")
     k3   = sidebar.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k3")
 
-    E_tot_mM = sidebar.slider("Film enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
+    # Enzyme loading in Units per electrode (UI)
+    sidebar.subheader("Enzyme loading")
+
+    E_units = sidebar.slider(
+        "Glucose oxidase loading (U per electrode)",
+        min_value=0.01,
+        max_value=10.0,
+        value=1.0,
+        step=0.01,
+        key="sim_E_units",
+        help="1 U/electrode = 1 µmol glucose converted per electrode per minute at saturating substrate."
+    )
 
     # --- Oxygen in ppm ---
     sidebar.subheader("Dissolved oxygen (bulk / film)")
@@ -82,8 +140,11 @@ with tabs[0]:
     V_bulk_mL = sidebar.number_input(
         "Bulk volume (mL)",
         min_value=0.1, max_value=100.0, value=1.0, step=0.1,
-        key="sim_V_bulk_mL"
+        key="sim_V_bulk_ML"
     )
+
+    # Convert U/electrode → mM for the engine
+    E_tot_mM_sim = units_per_electrode_to_mM(E_units, film_thickness_um)
 
     run_button = sidebar.button("Run simulation", key="sim_run_button")
 
@@ -94,7 +155,7 @@ with tabs[0]:
             km1=km1,
             k2=k2,
             k3=k3,
-            E_tot_mM=E_tot_mM,
+            E_tot_mM=E_tot_mM_sim,
             O2_mode=O2_mode,
             O2_0_ppm=O2_ppm,
             O2_bath_ppm=O2_bath_ppm,
@@ -176,6 +237,8 @@ with tabs[0]:
             "glucose_bulk_mM": glucose_bulk_mM,
             "glucose_film_mM": glucose_film_mM,
             "current_AU": current,
+            "GOx_loading_U_per_electrode": E_units,
+            "GOx_effective_E_tot_mM": E_tot_mM_sim,
         })
 
         csv = df.to_csv(index=False).encode("utf-8")
@@ -211,9 +274,9 @@ with tabs[1]:
         )
         glucose_steps_mM_sw.append(conc)
 
-    # Sweep ranges
-    E_min = sidebar.number_input("Min film enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
-    E_max = sidebar.number_input("Max film enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
+    # Sweep ranges in Units per electrode
+    E_units_min = sidebar.number_input("Min GOx loading (U per electrode)", 0.01, 50.0, 0.1, 0.01, key="sw_E_units_min")
+    E_units_max = sidebar.number_input("Max GOx loading (U per electrode)", 0.01, 50.0, 5.0, 0.01, key="sw_E_units_max")
     n_E   = sidebar.slider("Number of enzyme points", 3, 20, 8, key="sw_n_E")
 
     O2_ppm_min = sidebar.selectbox("Min bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
@@ -238,7 +301,7 @@ with tabs[1]:
     V_bulk_mL_sw = sidebar.number_input(
         "Bulk volume (mL, sweep)",
         min_value=0.1, max_value=100.0, value=1.0, step=0.1,
-        key="sw_V_bulk_mL"
+        key="sw_V_bulk_ML"
     )
 
     # Kinetics
@@ -250,19 +313,23 @@ with tabs[1]:
     run_sweep = sidebar.button("Run parameter sweep", key="sw_run_button")
 
     if run_sweep:
-        E_vals = np.linspace(E_min, E_max, n_E)
+        E_units_vals = np.linspace(E_units_min, E_units_max, n_E)
         O2_vals_ppm = np.linspace(O2_ppm_min, O2_ppm_max, n_O2)
 
         peak_signal = np.zeros((n_O2, n_E))
 
         for i, O2_ppm_val in enumerate(O2_vals_ppm):
-            for j, E_tot_mM in enumerate(E_vals):
+            for j, E_units_val in enumerate(E_units_vals):
+
+                # Convert Units → mM for this combination
+                E_tot_mM_sw = units_per_electrode_to_mM(E_units_val, film_thickness_um_sw)
+
                 result = run_gox_simulation(
                     k1=k1_sw,
                     km1=km1_sw,
                     k2=k2_sw,
                     k3=k3_sw,
-                    E_tot_mM=E_tot_mM,
+                    E_tot_mM=E_tot_mM_sw,
                     O2_mode=O2_mode_sw,
                     O2_0_ppm=O2_ppm_val,
                     O2_bath_ppm=O2_bath_ppm_sw,
@@ -281,16 +348,16 @@ with tabs[1]:
             peak_signal,
             aspect="auto",
             origin="lower",
-            extent=[E_min, E_max, O2_ppm_min, O2_ppm_max]
+            extent=[E_units_min, E_units_max, O2_ppm_min, O2_ppm_max]
         )
-        ax.set_xlabel("Film enzyme (mM)")
+        ax.set_xlabel("GOx loading (U per electrode)")
         ax.set_ylabel("Bulk O₂ (ppm)")
         ax.set_title("Peak film amperometric signal (A.U.)")
         fig.colorbar(im, ax=ax, label="Peak current (A.U.)")
         st.pyplot(fig)
 
         df_sweep = pd.DataFrame({
-            "E_film_mM": np.repeat(E_vals, n_O2),
+            "GOx_loading_U_per_electrode": np.repeat(E_units_vals, n_O2),
             "O2_bulk_ppm": np.tile(O2_vals_ppm, n_E),
             "peak_current_AU": peak_signal.flatten()
         })
