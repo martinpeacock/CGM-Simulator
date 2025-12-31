@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 31 21:41:05 2025
+Created on Wed Dec 31 21:43:52 2025
 
 @author: martp
 """
@@ -19,20 +19,17 @@ from gox_biosensor_engine import run_gox_simulation
 ELECTRODE_AREA_MM2 = 0.2  # mm²
 
 def units_per_electrode_to_mM(E_units, film_thickness_um, kcat_s_inv):
-    """Convert enzyme loading in Units per electrode to effective mM inside the film."""
     if E_units <= 0 or film_thickness_um <= 0 or kcat_s_inv <= 0:
         return 0.0
 
-    # 1 U = 1 µmol/min = 1e-6 mol/min
     rate_mol_per_s = E_units * 1e-6 / 60.0
     n_E_mol = rate_mol_per_s / kcat_s_inv
 
-    # film volume in liters: mm² * µm * 1e-9
     V_film_L = ELECTRODE_AREA_MM2 * film_thickness_um * 1e-9
     if V_film_L <= 0:
         return 0.0
 
-    return (n_E_mol / V_film_L) * 1e3  # M → mM
+    return (n_E_mol / V_film_L) * 1e3
 
 
 # ---------------------------------------------------------
@@ -49,7 +46,6 @@ sidebar.header("Simulation controls")
 # INPUTS
 # =========================================================
 
-# Glucose protocol
 sidebar.subheader("Bulk glucose steps")
 
 n_steps = sidebar.slider("Number of glucose steps", 1, 10, 6)
@@ -69,7 +65,6 @@ for i in range(n_steps):
         )
     )
 
-# Kinetics
 sidebar.subheader("Kinetics")
 
 Km_glu_mM = sidebar.slider("Km (mM)", 0.1, 50.0, 10.0, 0.1)
@@ -81,7 +76,6 @@ km1 = 1.0
 k2 = kcat_glu
 k1 = (km1 + k2) / Km_glu_M if Km_glu_M > 0 else 0.0
 
-# Enzyme loading
 sidebar.subheader("Enzyme loading")
 
 E_units = sidebar.slider("GOx loading (U)", 0.01, 10.0, 1.0, 0.01)
@@ -90,14 +84,12 @@ film_thickness_um = sidebar.slider("Film thickness (µm)", 1.0, 200.0, 20.0, 1.0
 E_tot_mM_sim = units_per_electrode_to_mM(E_units, film_thickness_um, kcat_glu)
 sidebar.write(f"Effective [GOx] = {E_tot_mM_sim:.3g} mM")
 
-# Oxygen
 sidebar.subheader("Oxygen")
 
 O2_ppm = sidebar.selectbox("Initial O₂ (ppm)", [0,1,2,3,4,5,6], index=6)
 O2_bath_ppm = sidebar.selectbox("Bath O₂ (ppm)", [0,1,2,3,4,5,6], index=6)
 O2_mode = sidebar.selectbox("O₂ mode", ["closed", "well-aerated"], index=0)
 
-# Run button
 run_sim = sidebar.button("Run simulation")
 
 # =========================================================
@@ -120,7 +112,6 @@ if run_sim:
         n_points=2000,
     )
 
-    # Extract outputs
     t = result["t"]
     P_mM = result["P_M"] * 1e3
     H2O2_mM = result["H2O2_M"] * 1e3
@@ -128,7 +119,6 @@ if run_sim:
     glucose_mM = result["glucose_mM"]
     current = result["current_AU"]
 
-    # Plot film species
     st.subheader("Film species")
     fig1, ax1 = plt.subplots(figsize=(8,5))
     ax1.plot(t, P_mM, label="P (mM)")
@@ -147,7 +137,6 @@ if run_sim:
 
     st.pyplot(fig1)
 
-    # Glucose protocol
     st.subheader("Glucose input")
     fig2, ax_glu = plt.subplots(figsize=(8,3))
     ax_glu.plot(t, glucose_mM, color="purple")
@@ -156,7 +145,6 @@ if run_sim:
     ax_glu.grid(True)
     st.pyplot(fig2)
 
-    # Current
     st.subheader("Current")
     fig3, ax_cur = plt.subplots(figsize=(8,3))
     ax_cur.plot(t, current, color="black")
