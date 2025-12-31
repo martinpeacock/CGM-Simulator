@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 31 22:46:22 2025
+Created on Wed Dec 31 23:03:53 2025
 
 @author: martp
 """
@@ -19,6 +19,7 @@ from gox_biosensor_engine import run_gox_simulation
 ELECTRODE_AREA_MM2 = 0.2  # mm²
 
 def units_per_electrode_to_mM(E_units, film_thickness_um, kcat_s_inv):
+    """Convert enzyme loading in Units per electrode to effective mM inside the film."""
     if E_units <= 0 or film_thickness_um <= 0 or kcat_s_inv <= 0:
         return 0.0
 
@@ -29,7 +30,7 @@ def units_per_electrode_to_mM(E_units, film_thickness_um, kcat_s_inv):
     if V_film_L <= 0:
         return 0.0
 
-    return (n_E_mol / V_film_L) * 1e3
+    return (n_E_mol / V_film_L) * 1e3  # M → mM
 
 
 # ---------------------------------------------------------
@@ -112,6 +113,7 @@ if run_sim:
         n_points=2000,
     )
 
+    # Extract outputs
     t = result["t"]
     P_mM = result["P_M"] * 1e3
     H2O2_mM = result["H2O2_M"] * 1e3
@@ -119,6 +121,7 @@ if run_sim:
     glucose_mM = result["glucose_mM"]
     current = result["current_AU"]
 
+    # Plot film species
     st.subheader("Film species")
     fig1, ax1 = plt.subplots(figsize=(8,5))
     ax1.plot(t, P_mM, label="P (mM)")
@@ -137,6 +140,7 @@ if run_sim:
 
     st.pyplot(fig1)
 
+    # Glucose protocol
     st.subheader("Glucose input")
     fig2, ax_glu = plt.subplots(figsize=(8,3))
     ax_glu.plot(t, glucose_mM, color="purple")
@@ -145,6 +149,7 @@ if run_sim:
     ax_glu.grid(True)
     st.pyplot(fig2)
 
+    # Current
     st.subheader("Current")
     fig3, ax_cur = plt.subplots(figsize=(8,3))
     ax_cur.plot(t, current, color="black")
