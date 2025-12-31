@@ -1,4 +1,3 @@
-
 # gox_biosensor_app.py
 # Streamlit UI for the immobilized GOx biosensor physics engine (Level A, bulk + film)
 
@@ -110,7 +109,7 @@ with tabs[0]:
         t = result["t"]
 
         # Film species
-        P_mM = result["P_M"] * 1e3
+        Gluconolactone_mM = result["P_M"] * 1e3
         H2O2_mM = result["H2O2_M"] * 1e3
         O2_film_mM = result["O2_film_M"] * 1e3
 
@@ -120,30 +119,43 @@ with tabs[0]:
 
         current = result["current_AU"]
 
-        # --- Plots ---
+        # --- Film species plot with secondary axis ---
         st.subheader("Film species (immobilized region)")
 
         fig1, ax1 = plt.subplots(figsize=(8, 5))
-        ax1.plot(t, P_mM, label="P_film (mM)")
-        ax1.plot(t, H2O2_mM, label="H2O2_film (mM)")
-        ax1.plot(t, O2_film_mM, label="O2_film (mM)")
+
+        # Primary axis
+        ax1.plot(t, Gluconolactone_mM, label="Gluconolactone_film (mM)", color="blue")
+        ax1.plot(t, H2O2_mM, label="H2O2_film (mM)", color="green")
         ax1.set_xlabel("Time (s)")
-        ax1.set_ylabel("Concentration (mM)")
+        ax1.set_ylabel("Gluconolactone / H2O2 (mM)")
         ax1.grid(True)
-        ax1.legend()
+
+        # Secondary axis for O2
+        ax2 = ax1.twinx()
+        ax2.plot(t, O2_film_mM, label="O2_film (mM)", color="red", linestyle="--")
+        ax2.set_ylabel("O2_film (mM)", color="red")
+
+        # Combined legend
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper right")
+
         st.pyplot(fig1)
 
+        # --- Bulk vs film glucose ---
         st.subheader("Bulk vs film glucose")
 
-        fig2, ax2 = plt.subplots(figsize=(8, 3))
-        ax2.plot(t, glucose_bulk_mM, label="Bulk glucose (mM)", color="purple")
-        ax2.plot(t, glucose_film_mM, label="Film glucose (mM)", color="orange", linestyle="--")
-        ax2.set_xlabel("Time (s)")
-        ax2.set_ylabel("Glucose (mM)")
-        ax2.grid(True)
-        ax2.legend()
+        fig2, ax2b = plt.subplots(figsize=(8, 3))
+        ax2b.plot(t, glucose_bulk_mM, label="Bulk glucose (mM)", color="purple")
+        ax2b.plot(t, glucose_film_mM, label="Film glucose (mM)", color="orange", linestyle="--")
+        ax2b.set_xlabel("Time (s)")
+        ax2b.set_ylabel("Glucose (mM)")
+        ax2b.grid(True)
+        ax2b.legend()
         st.pyplot(fig2)
 
+        # --- Current ---
         st.subheader("Amperometric current (from film H₂O₂)")
 
         fig3, ax3 = plt.subplots(figsize=(8, 3))
@@ -158,7 +170,7 @@ with tabs[0]:
 
         df = pd.DataFrame({
             "time_s": t,
-            "P_film_mM": P_mM,
+            "Gluconolactone_film_mM": Gluconolactone_mM,
             "H2O2_film_mM": H2O2_mM,
             "O2_film_mM": O2_film_mM,
             "glucose_bulk_mM": glucose_bulk_mM,
