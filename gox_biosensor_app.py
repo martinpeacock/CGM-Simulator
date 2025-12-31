@@ -1,6 +1,5 @@
+
 # gox_biosensor_app.py
-# Streamlit UI for the GOx biosensor physics engine
-# # gox_biosensor_app.py
 # Streamlit UI for the immobilized GOx biosensor physics engine (Level A, bulk + film)
 
 import numpy as np
