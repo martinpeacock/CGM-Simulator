@@ -6,37 +6,38 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
-from gox_biosensor_engine import run_gox_simulation, ppm_to_mM
+from gox_biosensor_engine import run_gox_simulation
 
 
 # ---------------------------------------------------------
 # Constants and helpers
 # ---------------------------------------------------------
 
-# Assumed geometric electrode area (mm²)
+# Assumed geometric electrode area (mm²) for film volume
 ELECTRODE_AREA_MM2 = 0.2  # adjust if needed
 
 
 def units_per_electrode_to_mM(
-    E_units,
-    film_thickness_um,
-    kcat_s_inv,
-    electrode_area_mm2=ELECTRODE_AREA_MM2,
-):
+    E_units: float,
+    film_thickness_um: float,
+    kcat_s_inv: float,
+    electrode_area_mm2: float = ELECTRODE_AREA_MM2,
+) -> float:
     """
     Convert enzyme loading in Units per electrode to an effective concentration in mM
     inside the film, based on film volume and kcat.
+
+    1 U = 1 µmol substrate converted per minute at saturating substrate.
     """
     if E_units <= 0 or film_thickness_um <= 0 or kcat_s_inv <= 0:
         return 0.0
 
-    # 1 U = 1 µmol/min = 1e-6 mol/min
+    # 1 U = 1e-6 mol/min
     rate_mol_per_s = E_units * 1e-6 / 60.0
     n_E_mol = rate_mol_per_s / kcat_s_inv
 
-    # film volume in liters
+    # film volume in liters: mm² * µm * 1e-9
     V_film_L = electrode_area_mm2 * film_thickness_um * 1e-9
-
     if V_film_L <= 0:
         return 0.0
 
@@ -88,23 +89,35 @@ with tabs[0]:
     sidebar.subheader("Kinetics (Michaelis–Menten for glucose)")
 
     Km_glu_mM = sidebar.slider(
-        "Glucose Km (mM)", 0.1, 50.0, 10.0, 0.1,
-        help="Typical GOx Km in vitro ~10–30 mM."
+        "Glucose Km (mM)",
+        0.1,
+        50.0,
+        10.0,
+        0.1,
+        help="Typical GOx Km in vitro ~10–30 mM.",
     )
 
     kcat_glu = sidebar.slider(
-        "Glucose kcat (s⁻¹)", 0.01, 500.0, 100.0, 0.5,
-        help="Effective turnover number inside the film."
+        "Glucose kcat (s⁻¹)",
+        0.01,
+        500.0,
+        100.0,
+        0.5,
+        help="Effective turnover number inside the film.",
     )
 
     k3 = sidebar.slider(
-        "O₂ reaction rate k3 (M⁻¹ s⁻¹)", 0.01, 1e4, 100.0, 1.0,
-        help="Bimolecular rate constant for reduced GOx reacting with O₂."
+        "O₂ reaction rate k3 (M⁻¹ s⁻¹)",
+        0.01,
+        1e4,
+        100.0,
+        1.0,
+        help="Bimolecular rate constant for reduced GOx reacting with O₂.",
     )
 
     # Map MM → mechanistic
     Km_glu_M = Km_glu_mM * 1e-3
-    km1 = 1.0
+    km1 = 1.0  # fixed ES dissociation
     k2 = kcat_glu
     k1 = (km1 + k2) / Km_glu_M if Km_glu_M > 0 else 0.0
 
@@ -114,8 +127,12 @@ with tabs[0]:
     sidebar.subheader("Enzyme loading and film geometry")
 
     E_units = sidebar.slider(
-        "GOx loading (U per electrode)", 0.01, 10.0, 1.0, 0.01,
-        help="1 U = 1 µmol/min at saturating substrate."
+        "GOx loading (U per electrode)",
+        0.01,
+        10.0,
+        1.0,
+        0.01,
+        help="1 U = 1 µmol/min at saturating substrate.",
     )
 
     film_thickness_um = sidebar.slider(
@@ -123,7 +140,10 @@ with tabs[0]:
     )
 
     E_tot_mM_sim = units_per_electrode_to_mM(
-        E_units, film_thickness_um, kcat_glu, ELECTRODE_AREA_MM2
+        E_units=E_units,
+        film_thickness_um=film_thickness_um,
+        kcat_s_inv=kcat_glu,
+        electrode_area_mm2=ELECTRODE_AREA_MM2,
     )
 
     sidebar.markdown(
@@ -136,9 +156,15 @@ with tabs[0]:
     # ------------------------------
     sidebar.subheader("Oxygen")
 
-    O2_ppm = sidebar.selectbox("Initial bulk O₂ (ppm)", [0,1,2,3,4,5,6], index=6)
-    O2_bath_ppm = sidebar.selectbox("Bath O₂ (ppm)", [0,1,2,3,4,5,6], index=6)
-    O2_mode = sidebar.selectbox("Oxygen mode", ["closed", "well-aerated"], index=0)
+    O2_ppm = sidebar.selectbox(
+        "Initial bulk O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], index=6
+    )
+    O2_bath_ppm = sidebar.selectbox(
+        "Bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], index=6
+    )
+    O2_mode = sidebar.selectbox(
+        "Oxygen mode", ["closed", "well-aerated"], index=0
+    )
 
     # ------------------------------
     # Run simulation
@@ -159,6 +185,9 @@ with tabs[0]:
             n_points=2000,
         )
 
+        # Physics engine keys:
+        # "t", "ES_M", "Ered_M", "P_M", "O2_M", "H2O2_M",
+        # "current_AU", "glucose_M", "glucose_mM"
         t = result["t"]
         P_mM = result["P_M"] * 1e3
         H2O2_mM = result["H2O2_M"] * 1e3
@@ -233,7 +262,6 @@ with tabs[0]:
             "text/csv",
         )
 
-
 # =========================================================
 # PARAMETER SWEEP TAB
 # =========================================================
@@ -241,8 +269,11 @@ with tabs[1]:
 
     sidebar.subheader("Sweep settings")
 
+    # Glucose step protocol for sweep
     n_steps_sw = sidebar.slider("Number of glucose steps (sweep)", 1, 6, 4)
-    step_duration_sw = sidebar.slider("Step duration (s, sweep)", 50, 1000, 150, 50)
+    step_duration_sw = sidebar.slider(
+        "Step duration (s, sweep)", 50, 1000, 150, 50
+    )
 
     default_concs_sw = [0, 4, 6, 8, 10, 12]
     glucose_steps_mM_sw = [
@@ -258,22 +289,42 @@ with tabs[1]:
     ]
 
     # Sweep ranges
-    E_units_min = sidebar.number_input("Min GOx loading (U)", 0.01, 50.0, 0.1, 0.01)
-    E_units_max = sidebar.number_input("Max GOx loading (U)", 0.01, 50.0, 5.0, 0.01)
+    E_units_min = sidebar.number_input(
+        "Min GOx loading (U)", 0.01, 50.0, 0.1, 0.01
+    )
+    E_units_max = sidebar.number_input(
+        "Max GOx loading (U)", 0.01, 50.0, 5.0, 0.01
+    )
     n_E = sidebar.slider("Number of enzyme points", 3, 20, 8)
 
-    O2_ppm_min = sidebar.selectbox("Min initial O₂ (ppm)", [0,1,2,3,4,5,6], index=0)
-    O2_ppm_max = sidebar.selectbox("Max initial O₂ (ppm)", [0,1,2,3,4,5,6], index=6)
+    O2_ppm_min = sidebar.selectbox(
+        "Min initial O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], index=0
+    )
+    O2_ppm_max = sidebar.selectbox(
+        "Max initial O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], index=6
+    )
     n_O2 = sidebar.slider("Number of O₂ points", 3, 20, 8)
 
-    O2_mode_sw = sidebar.selectbox("Oxygen mode (sweep)", ["closed", "well-aerated"], index=0)
-    O2_bath_ppm_sw = sidebar.selectbox("Bath O₂ (ppm, sweep)", [0,1,2,3,4,5,6], index=6)
+    O2_mode_sw = sidebar.selectbox(
+        "Oxygen mode (sweep)", ["closed", "well-aerated"], index=0
+    )
+    O2_bath_ppm_sw = sidebar.selectbox(
+        "Bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], index=6
+    )
 
-    film_thickness_um_sw = sidebar.slider("Film thickness (µm, sweep)", 1.0, 200.0, 20.0, 1.0)
+    film_thickness_um_sw = sidebar.slider(
+        "Film thickness (µm, sweep)", 1.0, 200.0, 20.0, 1.0
+    )
 
-    Km_glu_mM_sw = sidebar.slider("Glucose Km (mM, sweep)", 0.1, 50.0, 10.0, 0.5)
-    kcat_glu_sw = sidebar.slider("Glucose kcat (s⁻¹, sweep)", 0.01, 500.0, 100.0, 1.0)
-    k3_sw = sidebar.slider("O₂ reaction rate k3 (M⁻¹ s⁻¹, sweep)", 0.01, 1e4, 100.0, 1.0)
+    Km_glu_mM_sw = sidebar.slider(
+        "Glucose Km (mM, sweep)", 0.1, 50.0, 10.0, 0.5
+    )
+    kcat_glu_sw = sidebar.slider(
+        "Glucose kcat (s⁻¹, sweep)", 0.01, 500.0, 100.0, 1.0
+    )
+    k3_sw = sidebar.slider(
+        "O₂ reaction rate k3 (M⁻¹ s⁻¹, sweep)", 0.01, 1e4, 100.0, 1.0
+    )
 
     Km_glu_M_sw = Km_glu_mM_sw * 1e-3
     km1_sw = 1.0
@@ -291,7 +342,10 @@ with tabs[1]:
             for j, E_units_val in enumerate(E_units_vals):
 
                 E_tot_mM_sw = units_per_electrode_to_mM(
-                    E_units_val, film_thickness_um_sw, kcat_glu_sw, ELECTRODE_AREA_MM2
+                    E_units=E_units_val,
+                    film_thickness_um=film_thickness_um_sw,
+                    kcat_s_inv=kcat_glu_sw,
+                    electrode_area_mm2=ELECTRODE_AREA_MM2,
                 )
 
                 result_sw = run_gox_simulation(
