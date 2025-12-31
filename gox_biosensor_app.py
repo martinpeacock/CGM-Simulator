@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # gox_biosensor_app.py
 # Streamlit UI for the GOx biosensor physics engine
 
@@ -32,44 +31,42 @@ with tabs[0]:
     # --- Glucose step settings ---
     st.subheader("Glucose step protocol")
 
-    n_steps = st.slider("Number of glucose steps", 1, 10, 6)
-    step_duration = st.slider("Step duration (s)", 50, 1000, 150, 10)
+    n_steps = st.slider("Number of glucose steps", 1, 10, 6, key="sim_n_steps")
+    step_duration = st.slider("Step duration (s)", 50, 1000, 150, 10, key="sim_step_duration")
 
     default_concs = [0, 4, 6, 8, 10, 12, 14, 16, 18, 20]
     glucose_steps_mM = []
 
     for i in range(n_steps):
-        val = default_concs[i]
         conc = st.number_input(
             f"Step {i+1} glucose (mM)",
             min_value=0.0, max_value=100.0,
-            value=float(val), step=0.5
+            value=float(default_concs[i]),
+            step=0.5,
+            key=f"sim_glucose_step_{i}"
         )
         glucose_steps_mM.append(conc)
 
     # --- Kinetic parameters ---
     st.subheader("Kinetic parameters")
 
-    k1   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01)
-    km1  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01)
-    k2   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01)
-    k3   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01)
+    k1   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k1")
+    km1  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sim_km1")
+    k2   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k2")
+    k3   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sim_k3")
 
-    E_tot_mM = st.slider("Total enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001)
+    E_tot_mM = st.slider("Total enzyme [E] (mM)", 0.001, 1.0, 0.1, 0.001, key="sim_Etot")
 
     # --- Oxygen in ppm ---
     st.subheader("Dissolved oxygen (ppm)")
 
-    O2_ppm = st.selectbox("Initial O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6])
-    O2_bath_ppm = st.selectbox("Bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6])
+    O2_ppm = st.selectbox("Initial O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_ppm")
+    O2_bath_ppm = st.selectbox("Bath O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sim_O2_bath_ppm")
 
-    O2_0_mM = ppm_to_mM(O2_ppm)
-    O2_bath_mM = ppm_to_mM(O2_bath_ppm)
-
-    O2_mode = st.selectbox("Oxygen mode", ["closed", "well-aerated"])
+    O2_mode = st.selectbox("Oxygen mode", ["closed", "well-aerated"], key="sim_O2_mode")
 
     # --- Run simulation ---
-    if st.button("Run simulation"):
+    if st.button("Run simulation", key="sim_run_button"):
         result = run_gox_simulation(
             k1=k1,
             km1=km1,
@@ -135,6 +132,7 @@ with tabs[0]:
             data=csv,
             file_name="gox_biosensor_timeseries.csv",
             mime="text/csv",
+            key="sim_download_csv"
         )
 
 
@@ -147,8 +145,8 @@ with tabs[1]:
     st.write("Sweeps enzyme loading and oxygen (ppm) and reports peak current.")
 
     # Sweep settings
-    n_steps_sw = st.slider("Number of glucose steps", 1, 6, 4)
-    step_duration_sw = st.slider("Step duration (s)", 50, 1000, 150, 50)
+    n_steps_sw = st.slider("Number of glucose steps", 1, 6, 4, key="sw_n_steps")
+    step_duration_sw = st.slider("Step duration (s)", 50, 1000, 150, 50, key="sw_step_duration")
 
     default_concs_sw = [0, 4, 6, 8, 10, 12]
     glucose_steps_mM_sw = []
@@ -159,29 +157,29 @@ with tabs[1]:
             min_value=0.0, max_value=100.0,
             value=float(default_concs_sw[i]),
             step=0.5,
-            key=f"sw_gluc_{i}"
+            key=f"sw_glucose_step_{i}"
         )
         glucose_steps_mM_sw.append(conc)
 
     # Sweep ranges
-    E_min = st.number_input("Min enzyme (mM)", 0.001, 1.0, 0.01, 0.001)
-    E_max = st.number_input("Max enzyme (mM)", 0.001, 1.0, 0.5, 0.001)
-    n_E   = st.slider("Number of enzyme points", 3, 20, 8)
+    E_min = st.number_input("Min enzyme (mM)", 0.001, 1.0, 0.01, 0.001, key="sw_E_min")
+    E_max = st.number_input("Max enzyme (mM)", 0.001, 1.0, 0.5, 0.001, key="sw_E_max")
+    n_E   = st.slider("Number of enzyme points", 3, 20, 8, key="sw_n_E")
 
-    O2_ppm_min = st.selectbox("Min O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6])
-    O2_ppm_max = st.selectbox("Max O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6])
-    n_O2       = st.slider("Number of O₂ points", 3, 20, 8)
+    O2_ppm_min = st.selectbox("Min O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_min")
+    O2_ppm_max = st.selectbox("Max O₂ (ppm)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_ppm_max")
+    n_O2       = st.slider("Number of O₂ points", 3, 20, 8, key="sw_n_O2")
 
-    O2_mode_sw = st.selectbox("Oxygen mode (sweep)", ["closed", "well-aerated"])
-    O2_bath_ppm_sw = st.selectbox("Bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6])
+    O2_mode_sw = st.selectbox("Oxygen mode (sweep)", ["closed", "well-aerated"], key="sw_O2_mode")
+    O2_bath_ppm_sw = st.selectbox("Bath O₂ (ppm, sweep)", [0, 1, 2, 3, 4, 5, 6], key="sw_O2_bath_ppm")
 
     # Kinetics
-    k1_sw   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01)
-    km1_sw  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01)
-    k2_sw   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01)
-    k3_sw   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01)
+    k1_sw   = st.slider("k1 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k1")
+    km1_sw  = st.slider("k-1 (s⁻¹)", 0.01, 10.0, 0.5, 0.01, key="sw_km1")
+    k2_sw   = st.slider("k2 (s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k2")
+    k3_sw   = st.slider("k3 (M⁻¹ s⁻¹)", 0.01, 10.0, 1.0, 0.01, key="sw_k3")
 
-    if st.button("Run parameter sweep"):
+    if st.button("Run parameter sweep", key="sw_run_button"):
         E_vals = np.linspace(E_min, E_max, n_E)
         O2_vals_ppm = np.linspace(O2_ppm_min, O2_ppm_max, n_O2)
 
@@ -229,4 +227,5 @@ with tabs[1]:
             data=csv_sw,
             file_name="gox_biosensor_sweep.csv",
             mime="text/csv",
+            key="sw_download_csv"
         )
